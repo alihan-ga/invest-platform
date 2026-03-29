@@ -5397,19 +5397,29 @@ async function signUpEmail() {
 }
 
 async function signOut() {
-  await _sb.auth.signOut();
-  loans = [];
+  _appInitialized = false;
   _currentUser = null;
+  loans = [];
+  await _sb.auth.signOut();
   showAuthScreen();
 }
 
 // ── Bootstrap: проверяем сессию при загрузке ──────────────────────
+let _appInitialized = false;
+
 _sb.auth.onAuthStateChange(async (event, session) => {
   if (session && session.user) {
+    if (_appInitialized) return; // не загружать дважды
+    _appInitialized = true;
+    // Убираем #hash из URL чтобы токены не торчали в адресной строке
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+      history.replaceState(null, '', window.location.pathname);
+    }
     showApp(session.user);
     initTheme();
-    await load(); // load() внутри вызывает loadUserHolidaysFromDB + initUserHolidays + renderSidebar + showPage
+    await load();
   } else {
+    _appInitialized = false;
     showAuthScreen();
   }
 });
@@ -5417,7 +5427,6 @@ _sb.auth.onAuthStateChange(async (event, session) => {
 // Сразу проверяем текущую сессию (на случай refresh страницы)
 _sb.auth.getSession().then(({ data: { session } }) => {
   if (!session) {
-    // Нет сессии — показываем экран входа
     document.getElementById('auth-loading').classList.add('hidden');
     document.getElementById('auth-screen').classList.remove('hidden');
   }
