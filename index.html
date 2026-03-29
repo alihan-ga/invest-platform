@@ -439,13 +439,13 @@ tr.row-default td .bal-loss{color:var(--danger);font-weight:700}
 .auth-toggle{font-size:12px;color:var(--text2);margin-top:16px}
 .auth-toggle a{color:var(--accent);cursor:pointer;text-decoration:none}
 .auth-user-bar{
-  position:fixed;top:0;right:0;z-index:1000;
+  position:fixed;top:0;right:0;z-index:9990;
   display:flex;align-items:center;gap:8px;
   padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);
   border-left:1px solid var(--border);border-bottom-left-radius:10px;
-  font-size:12px;color:var(--text2);
+  font-size:12px;color:var(--text2);pointer-events:all;
 }
-.auth-user-bar.hidden{display:none}
+.auth-user-bar.hidden{display:none!important}
 .auth-signout{
   background:none;border:1px solid var(--border2);border-radius:6px;
   padding:3px 8px;font-size:11px;color:var(--text3);cursor:pointer;
@@ -5262,15 +5262,33 @@ async function load() {
 async function save() {
   if (!_currentUser) return;
   try {
-    // Удаляем все займы пользователя и вставляем заново (простой подход)
-    await _sb.from('loans').delete().eq('user_id', _currentUser.id);
-    if (loans.length > 0) {
-      const rows = loans.map(l => ({
-        user_id: _currentUser.id,
-        data: l
-      }));
-      const { error } = await _sb.from('loans').insert(rows);
-      if (error) throw error;
+    // Получаем существующие id займов в БД
+    const { data: existing } = await _sb
+      .from('loans')
+      .select('id, data')
+      .eq('user_id', _currentUser.id);
+
+    const existingIds = new Set((existing || []).map(r => r.data.id));
+    const currentIds  = new Set(loans.map(l => l.id));
+
+    // Удаляем займы которых больше нет
+    const toDelete = (existing || []).filter(r => !currentIds.has(r.data.id)).map(r => r.id);
+    if (toDelete.length > 0) {
+      await _sb.from('loans').delete().in('id', toDelete);
+    }
+
+    // Upsert каждого займа по loan_id (используем data->>'id' как ключ через upsert)
+    for (const l of loans) {
+      if (existingIds.has(l.id)) {
+        // Обновляем существующий
+        const row = (existing || []).find(r => r.data.id === l.id);
+        if (row) {
+          await _sb.from('loans').update({ data: l, updated_at: new Date().toISOString() }).eq('id', row.id);
+        }
+      } else {
+        // Вставляем новый
+        await _sb.from('loans').insert({ user_id: _currentUser.id, data: l });
+      }
     }
   } catch(e) {
     console.error('save error:', e);
@@ -5284,12 +5302,16 @@ let _userHolidaysCache = {};
 async function loadUserHolidaysFromDB() {
   if (!_currentUser) return;
   try {
-    const { data } = await _sb
+    const { data, error } = await _sb
       .from('holidays')
       .select('data')
       .eq('user_id', _currentUser.id)
-      .single();
-    _userHolidaysCache = (data && data.data) ? data.data : {};
+      .maybeSingle(); // maybeSingle не падает если записи нет (в отличие от .single())
+    if (!error && data && data.data) {
+      _userHolidaysCache = data.data;
+    } else {
+      _userHolidaysCache = {};
+    }
   } catch(e) {
     _userHolidaysCache = {};
   }
