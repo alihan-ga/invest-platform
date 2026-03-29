@@ -438,20 +438,50 @@ tr.row-default td .bal-loss{color:var(--danger);font-weight:700}
 .auth-error{color:var(--danger);font-size:12px;margin-bottom:10px;min-height:18px}
 .auth-toggle{font-size:12px;color:var(--text2);margin-top:16px}
 .auth-toggle a{color:var(--accent);cursor:pointer;text-decoration:none}
-.auth-user-bar{
-  position:fixed;top:0;right:0;z-index:9990;
-  display:flex;align-items:center;gap:8px;
-  padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);
-  border-left:1px solid var(--border);border-bottom-left-radius:10px;
-  font-size:12px;color:var(--text2);pointer-events:all;
-}
-.auth-user-bar.hidden{display:none!important}
-.auth-signout{
-  background:none;border:1px solid var(--border2);border-radius:6px;
-  padding:3px 8px;font-size:11px;color:var(--text3);cursor:pointer;
+/* ── PROFILE BUTTON ── */
+.profile-btn{
+  position:fixed;top:12px;right:16px;z-index:9990;
+  width:36px;height:36px;border-radius:50%;
+  background:var(--accent);color:#fff;
+  border:none;cursor:pointer;font-size:15px;font-weight:700;
   font-family:'Manrope',sans-serif;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 8px rgba(99,102,241,.4);
+  transition:all .2s;
 }
-.auth-signout:hover{color:var(--danger);border-color:var(--danger)}
+.profile-btn:hover{transform:scale(1.08);box-shadow:0 4px 14px rgba(99,102,241,.5)}
+.profile-btn.hidden{display:none!important}
+.profile-dropdown{
+  position:fixed;top:56px;right:16px;z-index:9990;
+  background:var(--bg2);border:1px solid var(--border);border-radius:12px;
+  padding:8px;min-width:220px;
+  box-shadow:0 8px 24px rgba(0,0,0,.25);
+}
+.profile-dropdown.hidden{display:none!important}
+.profile-dropdown-email{
+  padding:8px 10px 12px;font-size:12px;color:var(--text2);
+  border-bottom:1px solid var(--border);margin-bottom:6px;
+  word-break:break-all;
+}
+.profile-dropdown-item{
+  display:flex;align-items:center;gap:10px;
+  width:100%;padding:9px 10px;border-radius:8px;
+  background:none;border:none;cursor:pointer;
+  font-size:13px;font-weight:500;color:var(--text);
+  font-family:'Manrope',sans-serif;transition:background .15s;text-align:left;
+}
+.profile-dropdown-item:hover{background:var(--bg3)}
+.profile-dropdown-item.danger{color:var(--danger)}
+.profile-dropdown-item.danger:hover{background:var(--danger-bg)}
+/* ── AUTH THEME TOGGLE ── */
+.auth-theme-btn{
+  position:absolute;top:16px;right:16px;
+  background:none;border:1px solid var(--border2);border-radius:20px;
+  padding:5px 12px;cursor:pointer;font-size:12px;color:var(--text2);
+  font-family:'Manrope',sans-serif;transition:all .2s;
+}
+.auth-theme-btn:hover{background:var(--bg3);color:var(--text)}
+#auth-screen{position:relative}
 #auth-loading{
   position:fixed;inset:0;z-index:10000;background:var(--bg);
   display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text2);
@@ -467,6 +497,7 @@ tr.row-default td .bal-loss{color:var(--danger);font-weight:700}
 
 <!-- Auth screen -->
 <div id="auth-screen" class="hidden">
+  <button class="auth-theme-btn" onclick="toggleTheme()" id="auth-theme-btn">🌙 Тёмная</button>
   <div class="auth-card">
     <div class="auth-logo">💼</div>
     <div class="auth-title">Инвест-трекер</div>
@@ -497,10 +528,18 @@ tr.row-default td .bal-loss{color:var(--danger);font-weight:700}
   </div>
 </div>
 
-<!-- User bar (shown when logged in) -->
-<div class="auth-user-bar hidden" id="auth-user-bar">
-  <span id="auth-user-email"></span>
-  <button class="auth-signout" onclick="signOut()">Выйти</button>
+<!-- Profile button (shown when logged in) -->
+<button class="profile-btn hidden" id="profile-btn" onclick="toggleProfileDropdown()">
+  <span id="profile-avatar-letter">?</span>
+</button>
+<div class="profile-dropdown hidden" id="profile-dropdown">
+  <div class="profile-dropdown-email" id="profile-dropdown-email"></div>
+  <button class="profile-dropdown-item" onclick="toggleTheme();closeProfileDropdown()">
+    <span id="profile-theme-icon">🌙</span> Сменить тему
+  </button>
+  <button class="profile-dropdown-item danger" onclick="signOut();closeProfileDropdown()">
+    🚪 Выйти
+  </button>
 </div>
 
 <!-- App (hidden until auth completes) -->
@@ -4632,8 +4671,10 @@ function updateThemeButtons(isLight) {
   const icon  = isLight ? '🌙' : '☀️';
   const btn1 = document.getElementById('theme-btn');
   const btn2 = document.getElementById('theme-btn-desk');
+  const btn3 = document.getElementById('auth-theme-btn');
   if (btn1) btn1.textContent = label;
   if (btn2) btn2.textContent = icon;
+  if (btn3) btn3.textContent = label;
 }
 
 function initTheme() {
@@ -5343,7 +5384,12 @@ function showAuthScreen() {
   document.getElementById('auth-loading').classList.add('hidden');
   document.getElementById('auth-screen').classList.remove('hidden');
   document.getElementById('app-root').classList.add('hidden');
-  document.getElementById('auth-user-bar').classList.add('hidden');
+  document.getElementById('profile-btn').classList.add('hidden');
+  document.getElementById('profile-dropdown').classList.add('hidden');
+  // Синхронизируем кнопку темы на экране авторизации
+  const isLight = document.body.classList.contains('light');
+  const authThemeBtn = document.getElementById('auth-theme-btn');
+  if (authThemeBtn) authThemeBtn.textContent = isLight ? '🌙 Тёмная' : '☀️ Светлая';
 }
 
 function showApp(user) {
@@ -5351,9 +5397,32 @@ function showApp(user) {
   document.getElementById('auth-loading').classList.add('hidden');
   document.getElementById('auth-screen').classList.add('hidden');
   document.getElementById('app-root').classList.remove('hidden');
-  document.getElementById('auth-user-bar').classList.remove('hidden');
-  document.getElementById('auth-user-email').textContent = user.email || 'Пользователь';
+  document.getElementById('profile-btn').classList.remove('hidden');
+  // Первая буква email как аватар
+  const letter = (user.email || 'U')[0].toUpperCase();
+  document.getElementById('profile-avatar-letter').textContent = letter;
+  document.getElementById('profile-dropdown-email').textContent = user.email || '';
 }
+
+function toggleProfileDropdown() {
+  const dd = document.getElementById('profile-dropdown');
+  const isLight = document.body.classList.contains('light');
+  document.getElementById('profile-theme-icon').textContent = isLight ? '🌙' : '☀️';
+  dd.classList.toggle('hidden');
+}
+
+function closeProfileDropdown() {
+  document.getElementById('profile-dropdown').classList.add('hidden');
+}
+
+// Закрываем дропдаун при клике вне него
+document.addEventListener('click', function(e) {
+  const btn = document.getElementById('profile-btn');
+  const dd  = document.getElementById('profile-dropdown');
+  if (btn && dd && !btn.contains(e.target) && !dd.contains(e.target)) {
+    dd.classList.add('hidden');
+  }
+});
 
 function switchAuthMode(mode) {
   document.getElementById('auth-mode-login').classList.toggle('hidden', mode !== 'login');
@@ -5397,29 +5466,27 @@ async function signUpEmail() {
 }
 
 async function signOut() {
-  _appInitialized = false;
   _currentUser = null;
   loans = [];
   await _sb.auth.signOut();
-  showAuthScreen();
 }
 
 // ── Bootstrap: проверяем сессию при загрузке ──────────────────────
-let _appInitialized = false;
-
 _sb.auth.onAuthStateChange(async (event, session) => {
-  if (session && session.user) {
-    if (_appInitialized) return; // не загружать дважды
-    _appInitialized = true;
-    // Убираем #hash из URL чтобы токены не торчали в адресной строке
-    if (window.location.hash && window.location.hash.includes('access_token')) {
-      history.replaceState(null, '', window.location.pathname);
+  // Убираем #hash из URL чтобы токены не торчали в адресной строке
+  if (window.location.hash && window.location.hash.includes('access_token')) {
+    history.replaceState(null, '', window.location.pathname);
+  }
+
+  if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+    if (session && session.user) {
+      showApp(session.user);
+      initTheme();
+      await load();
+    } else {
+      showAuthScreen();
     }
-    showApp(session.user);
-    initTheme();
-    await load();
-  } else {
-    _appInitialized = false;
+  } else if (event === 'SIGNED_OUT') {
     showAuthScreen();
   }
 });
