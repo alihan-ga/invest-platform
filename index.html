@@ -5469,36 +5469,46 @@ async function signOut() {
   _currentUser = null;
   loans = [];
   await _sb.auth.signOut();
+  // signOut вызовет SIGNED_OUT в onAuthStateChange — он покажет экран входа
 }
 
-// ── Bootstrap: проверяем сессию при загрузке ──────────────────────
-_sb.auth.onAuthStateChange(async (event, session) => {
-  // Убираем #hash из URL чтобы токены не торчали в адресной строке
+// ── Bootstrap ─────────────────────────────────────────────────────
+// Используем только getSession() — надёжнее чем onAuthStateChange для SPA без роутера
+async function _bootstrap() {
+  // Убираем #hash из URL (токены от Google OAuth)
   if (window.location.hash && window.location.hash.includes('access_token')) {
     history.replaceState(null, '', window.location.pathname);
   }
 
-  if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+  const { data: { session } } = await _sb.auth.getSession();
+
+  if (session && session.user) {
+    showApp(session.user);
+    initTheme();
+    await load();
+  } else {
+    showAuthScreen();
+  }
+}
+
+// onAuthStateChange нужен только для отслеживания выхода и Google redirect
+_sb.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_OUT') {
+    showAuthScreen();
+  } else if (event === 'SIGNED_IN' && !_currentUser) {
+    // Срабатывает после редиректа от Google — загружаем приложение
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+      history.replaceState(null, '', window.location.pathname);
+    }
     if (session && session.user) {
       showApp(session.user);
       initTheme();
       await load();
-    } else {
-      showAuthScreen();
     }
-  } else if (event === 'SIGNED_OUT') {
-    showAuthScreen();
   }
 });
 
-// Сразу проверяем текущую сессию (на случай refresh страницы)
-_sb.auth.getSession().then(({ data: { session } }) => {
-  if (!session) {
-    document.getElementById('auth-loading').classList.add('hidden');
-    document.getElementById('auth-screen').classList.remove('hidden');
-  }
-  // Если сессия есть — onAuthStateChange выше её подхватит
-});
+_bootstrap();
 </script>
 </body>
 </html>
