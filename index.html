@@ -5433,9 +5433,10 @@ function switchAuthMode(mode) {
 
 // ── Auth actions ──────────────────────────────────────────────────
 async function signInGoogle() {
+  const redirectTo = window.location.origin + window.location.pathname;
   const { error } = await _sb.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: window.location.href }
+    options: { redirectTo }
   });
   if (error) document.getElementById('auth-error').textContent = error.message;
 }
@@ -5466,54 +5467,31 @@ async function signUpEmail() {
 }
 
 async function signOut() {
-  _currentUser = null;
   loans = [];
+  _currentUser = null;
   await _sb.auth.signOut();
-  // signOut вызовет SIGNED_OUT в onAuthStateChange — он покажет экран входа
+  showAuthScreen();
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────
-let _appLoaded = false;
-
 async function _startApp(user) {
-  if (_appLoaded) return;
-  _appLoaded = true;
+  // Убираем токены из URL адресной строки
   if (window.location.hash) history.replaceState(null, '', window.location.pathname);
+  _currentUser = user;
   showApp(user);
   initTheme();
   await load();
 }
 
-function _showAuthNow() {
-  if (_appLoaded) return; // уже в приложении — не трогаем
-  document.getElementById('auth-loading').classList.add('hidden');
-  document.getElementById('auth-screen').classList.remove('hidden');
-}
-
-// Слушаем изменения сессии (выход, вход через Google redirect)
+// onAuthStateChange — единственный источник правды
 _sb.auth.onAuthStateChange(async (event, session) => {
-  if (event === 'SIGNED_IN') {
-    if (session && session.user) await _startApp(session.user);
-  } else if (event === 'SIGNED_OUT') {
-    _appLoaded = false;
+  console.log('auth event:', event, !!session);
+  if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session && session.user) {
+    await _startApp(session.user);
+  } else if (event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !session)) {
     showAuthScreen();
   }
 });
-
-// Главный старт — проверяем существующую сессию напрямую
-(async () => {
-  try {
-    const { data: { session } } = await _sb.auth.getSession();
-    if (session && session.user) {
-      await _startApp(session.user);
-    } else {
-      _showAuthNow();
-    }
-  } catch(e) {
-    console.error('bootstrap error:', e);
-    _showAuthNow();
-  }
-})();
 </script>
 </body>
 </html>
