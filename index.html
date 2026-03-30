@@ -5484,18 +5484,36 @@ async function _startApp(user) {
   await load();
 }
 
+function _showAuthNow() {
+  if (_appLoaded) return; // уже в приложении — не трогаем
+  document.getElementById('auth-loading').classList.add('hidden');
+  document.getElementById('auth-screen').classList.remove('hidden');
+}
+
+// Слушаем изменения сессии (выход, вход через Google redirect)
 _sb.auth.onAuthStateChange(async (event, session) => {
-  if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-    if (session && session.user) {
-      await _startApp(session.user);
-    } else {
-      showAuthScreen();
-    }
+  if (event === 'SIGNED_IN') {
+    if (session && session.user) await _startApp(session.user);
   } else if (event === 'SIGNED_OUT') {
     _appLoaded = false;
     showAuthScreen();
   }
 });
+
+// Главный старт — проверяем существующую сессию напрямую
+(async () => {
+  try {
+    const { data: { session } } = await _sb.auth.getSession();
+    if (session && session.user) {
+      await _startApp(session.user);
+    } else {
+      _showAuthNow();
+    }
+  } catch(e) {
+    console.error('bootstrap error:', e);
+    _showAuthNow();
+  }
+})();
 </script>
 </body>
 </html>
