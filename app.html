@@ -290,22 +290,22 @@ body.sb-open .sidebar{transform:translateX(0)!important}
   .main{padding-bottom:64px}
   .detail{padding:12px;max-width:100%}
 
-  /* Fix 1: Инвестировано + Доход % full width, rest 2-col */
+  /* Fix 1: Инвестировано + Доход % full width в ov-grid-3, ov-grid-4 — чистые 2x2 */
   .ov-grid-3{grid-template-columns:repeat(2,1fr)!important}
+  .ov-grid-3>.card-sm:first-child{grid-column:1/-1}
   .ov-grid-4{grid-template-columns:repeat(2,1fr)!important}
-  .ov-grid-3>.card-sm:first-child,.ov-grid-4>.card-sm:first-child{grid-column:1/-1}
 
-  /* Fix 2a: Overview donut — show as horizontal strip below stats */
+  /* Fix 2a: Overview donut — show as block below stats, bigger canvas */
   .ov-row1{flex-direction:column!important;gap:10px!important}
   .ov-row1-stats{width:100%!important}
   .ov-row1-donut{
     display:flex!important;width:100%!important;
-    align-items:center;gap:14px;
+    align-items:center;gap:16px;
     background:var(--bg2);border:1px solid var(--border);
-    border-radius:var(--r);padding:10px 14px
+    border-radius:var(--r);padding:14px 16px
   }
-  .ov-row1-donut canvas{width:72px!important;height:72px!important;flex-shrink:0}
-  .ov-row1-donut>div:last-child{margin-top:0;font-size:10px}
+  .ov-row1-donut canvas{width:110px!important;height:110px!important;flex-shrink:0}
+  .ov-row1-donut>div:last-child{margin-top:0;font-size:11px}
 
   /* Fix 2b: loan detail donut — show as strip below stats */
   .loan-summary-wrap{grid-template-columns:1fr!important}
@@ -1267,7 +1267,8 @@ function renderMobLoanList() {
 
 function selectLoanMobile(id) {
   currentId = id;
-  // On mobile: hide list, show detail
+  showPage('loans');
+  setMobNav('loans');
   const mobList = document.querySelector('.mob-loan-list');
   const deskWrap = document.getElementById('loan-detail-wrap');
   if (isMobile()) {
@@ -1352,15 +1353,16 @@ function setFilter(f, el) { setPlatFilter(f, el); }
 function renderSidebar() {
   const q = (document.getElementById('search').value||'').toLowerCase();
   const list = loans.filter(l => {
-    // Platform filter
     if (filterPlatform !== 'all' && l.platform !== filterPlatform) return false;
-    // Type filter
     if (filterLoanType !== 'all' && l.loan_type !== filterLoanType) return false;
-    // Status filter — filterStatus is now the Russian status text or 'all'
     if (filterStatus !== 'all' && loanStatus(l).txt !== filterStatus) return false;
-    // Search
     if (q && !l.name.toLowerCase().includes(q) && !l.company.toLowerCase().includes(q)) return false;
     return true;
+  }).sort((a, b) => {
+    // Новые займы (по дате первой выплаты) сверху
+    const da = a.date_first || '';
+    const db = b.date_first || '';
+    return db.localeCompare(da);
   });
 
   const cntEl = document.getElementById('sb-count');
