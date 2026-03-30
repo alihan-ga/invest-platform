@@ -1267,21 +1267,18 @@ function renderMobLoanList() {
 
 function selectLoanMobile(id) {
   currentId = id;
-  // Активируем страницу Займы
+  // Активируем страницу Займы без вызова showPage (который сбрасывает видимость)
   currentPage = 'loans';
   ['overview','calendar','loans'].forEach(p => {
     const el = document.getElementById('page-' + p);
     if (el) el.style.display = p === 'loans' ? 'block' : 'none';
   });
   setMobNav('loans');
-  // Скрываем список займов, показываем деталь
+  // Скрываем список, показываем деталь
   const mobList = document.querySelector('.mob-loan-list');
   const deskWrap = document.getElementById('loan-detail-wrap');
-  if (isMobile()) {
-    if (mobList) mobList.style.display = 'none';
-    if (deskWrap) { deskWrap.style.display = 'block'; deskWrap.classList.remove('desk-loan-list'); }
-  }
-  renderSidebar();
+  if (mobList) mobList.style.display = 'none';
+  if (deskWrap) { deskWrap.style.display = 'block'; deskWrap.classList.remove('desk-loan-list'); }
   renderDetail();
 }
 function showPage(page, btn) {
@@ -2423,6 +2420,74 @@ function themeColors() {
   };
 }
 
+// ── Универсальный tooltip для donut-диаграмм ──────────────────────
+function attachDonutTooltip(canvas, segmentsData, totalVal) {
+  if (canvas._donutTooltipBound) return;
+  canvas._donutTooltipBound = true;
+
+  let tip = document.getElementById('donut-tip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'donut-tip';
+    tip.style.cssText = 'position:fixed;z-index:9999;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;font-family:Manrope,sans-serif;color:var(--text);pointer-events:none;display:none;line-height:1.6;box-shadow:0 4px 16px rgba(0,0,0,.2)';
+    document.body.appendChild(tip);
+  }
+
+  function getSegment(mx, my) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (mx - rect.left)  * scaleX - canvas.width  / 2;
+    const y = (my - rect.top)   * scaleY - canvas.height / 2;
+    const dist = Math.sqrt(x*x + y*y);
+    const r    = canvas.width/2 - 8;
+    const inner= r * 0.55;
+    if (dist < inner || dist > r) return null;
+    let angle = Math.atan2(y, x);
+    if (angle < -Math.PI/2) angle += Math.PI*2;
+    angle += Math.PI/2; // нормируем к -PI/2 старту
+    if (angle > Math.PI*2) angle -= Math.PI*2;
+
+    const visible = segmentsData.filter(s => s.val / totalVal > 0.001);
+    const gap = visible.length > 1 ? 0.03 : 0;
+    const avail = Math.PI*2 - gap*visible.length;
+    let a = 0;
+    for (const seg of visible) {
+      const sweep = (seg.val / totalVal) * avail;
+      if (angle >= a && angle < a + sweep) return seg;
+      a += sweep + gap;
+    }
+    return null;
+  }
+
+  canvas.addEventListener('mousemove', e => {
+    const seg = getSegment(e.clientX, e.clientY);
+    if (seg) {
+      const pct = ((seg.val / totalVal) * 100).toFixed(1);
+      tip.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${seg.color};margin-right:6px;vertical-align:middle"></span><b>${seg.label}</b><br>${fmt(Math.round(seg.val))} тг &nbsp;<span style="color:var(--text3)">${pct}%</span>`;
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX + 14) + 'px';
+      tip.style.top  = (e.clientY - 10) + 'px';
+    } else {
+      tip.style.display = 'none';
+    }
+  });
+  canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  // Touch support
+  canvas.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    const seg = getSegment(t.clientX, t.clientY);
+    if (seg) {
+      const pct = ((seg.val / totalVal) * 100).toFixed(1);
+      tip.innerHTML = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${seg.color};margin-right:6px;vertical-align:middle"></span><b>${seg.label}</b><br>${fmt(Math.round(seg.val))} тг &nbsp;<span style="color:var(--text3)">${pct}%</span>`;
+      tip.style.display = 'block';
+      tip.style.left = (t.clientX + 14) + 'px';
+      tip.style.top  = (t.clientY - 10) + 'px';
+    }
+  }, {passive:true});
+  canvas.addEventListener('touchend', () => { setTimeout(() => { tip.style.display = 'none'; }, 1500); });
+}
+
 function drawOvDonut(recvBody, recvReward, pendBody, pendReward) {
   const canvas = document.getElementById('ov-donut');
   if (!canvas) return;
@@ -2432,10 +2497,10 @@ function drawOvDonut(recvBody, recvReward, pendBody, pendReward) {
   const tc = themeColors();
 
   const segments = [
-    {val: recvBody,   color: '#22c55e'},
-    {val: recvReward, color: '#6366f1'},
-    {val: pendBody,   color: tc.pendBody},
-    {val: pendReward, color: tc.pendReward},
+    {val: recvBody,   color: '#22c55e', label: 'Тело получено'},
+    {val: recvReward, color: '#6366f1', label: '% получено'},
+    {val: pendBody,   color: tc.pendBody,   label: 'Тело ожидается'},
+    {val: pendReward, color: tc.pendReward, label: '% ожидается'},
   ];
   const total = segments.reduce((s,sg) => s + sg.val, 0);
   if (total <= 0) return;
@@ -2459,6 +2524,9 @@ function drawOvDonut(recvBody, recvReward, pendBody, pendReward) {
   ctx.fillText(pct+'%', cx, cy-7);
   ctx.font='9px Manrope,sans-serif'; ctx.fillStyle=tc.text3;
   ctx.fillText('получено', cx, cy+9);
+
+  canvas._donutTooltipBound = false;
+  attachDonutTooltip(canvas, segments, total);
 }
 
 // Quick confirm a payment from today block
@@ -3358,49 +3426,39 @@ function drawBalanceChart(l) {
   const pendReward = Math.max(0, totReward - recvReward);
 
   const allSegments = [
-    { val: recvBody,   color: '#22c55e' },
-    { val: recvReward, color: '#6366f1' },
-    { val: pendBody,   color: tc.pendBody   },
-    { val: pendReward, color: tc.pendReward },
+    { val: recvBody,   color: '#22c55e', label: 'Тело получено'  },
+    { val: recvReward, color: '#6366f1', label: '% получено'     },
+    { val: pendBody,   color: tc.pendBody,   label: 'Тело ожидается' },
+    { val: pendReward, color: tc.pendReward, label: '% ожидается'    },
   ];
 
-  // Only draw segments with meaningful value (> 0.1% of total to avoid tiny-sweep bug)
   const total = allSegments.reduce((s, seg) => s + seg.val, 0);
   if (total <= 0) return;
-
-  const minFraction = 0.001; // skip segments smaller than 0.1%
-  const segments = allSegments.filter(seg => seg.val / total > minFraction);
+  const segments = allSegments.filter(seg => seg.val / total > 0.001);
   if (segments.length === 0) return;
 
   const cx = W/2, cy = H/2, r = W/2 - 8, inner = r * 0.55;
-  // Gap between segments (in radians) — only add if multiple segments
   const gap = segments.length > 1 ? 0.03 : 0;
-  const totalGap = gap * segments.length;
-  const availableAngle = Math.PI * 2 - totalGap;
+  const availableAngle = Math.PI * 2 - gap * segments.length;
 
   let angle = -Math.PI/2;
-
   segments.forEach(seg => {
     const sweep = (seg.val / total) * availableAngle;
     if (sweep <= 0) return;
-
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.arc(cx, cy, r, angle, angle + sweep);
     ctx.closePath();
     ctx.fillStyle = seg.color;
     ctx.fill();
-
     angle += sweep + gap;
   });
 
-  // Inner hole (donut)
   ctx.beginPath();
   ctx.arc(cx, cy, inner, 0, Math.PI * 2);
   ctx.fillStyle = tc.bg2;
   ctx.fill();
 
-  // Center text
   const pct = Math.round((recvBody + recvReward) / total * 100);
   ctx.fillStyle = tc.text;
   ctx.font = `bold ${W > 150 ? 18 : 14}px Manrope,sans-serif`;
@@ -3410,6 +3468,9 @@ function drawBalanceChart(l) {
   ctx.font = `${W > 150 ? 10 : 9}px Manrope,sans-serif`;
   ctx.fillStyle = tc.text3;
   ctx.fillText('получено', cx, cy + 10);
+
+  canvas._donutTooltipBound = false;
+  attachDonutTooltip(canvas, allSegments, total);
 }
 
 // ================================================================
