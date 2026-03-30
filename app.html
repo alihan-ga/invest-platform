@@ -1267,8 +1267,14 @@ function renderMobLoanList() {
 
 function selectLoanMobile(id) {
   currentId = id;
-  showPage('loans');
+  // Активируем страницу Займы
+  currentPage = 'loans';
+  ['overview','calendar','loans'].forEach(p => {
+    const el = document.getElementById('page-' + p);
+    if (el) el.style.display = p === 'loans' ? 'block' : 'none';
+  });
   setMobNav('loans');
+  // Скрываем список займов, показываем деталь
   const mobList = document.querySelector('.mob-loan-list');
   const deskWrap = document.getElementById('loan-detail-wrap');
   if (isMobile()) {
