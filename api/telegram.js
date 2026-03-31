@@ -13,6 +13,12 @@ async function sendMessage(chatId, text) {
   });
 }
 
+async function safeJson(res) {
+  const text = await res.text();
+  if (!text || !text.trim()) return null;
+  try { return JSON.parse(text); } catch { return null; }
+}
+
 async function sbGet(path) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: {
@@ -20,7 +26,7 @@ async function sbGet(path) {
       'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
     }
   });
-  return res.json();
+  return safeJson(res);
 }
 
 async function sbPost(path, body) {
@@ -34,7 +40,7 @@ async function sbPost(path, body) {
     },
     body: JSON.stringify(body)
   });
-  return res.json();
+  return safeJson(res);
 }
 
 async function sbDelete(path) {
@@ -57,7 +63,7 @@ async function findUserByCode(code) {
     },
     body: JSON.stringify({ p_code: code })
   });
-  const data = await res.json();
+  const data = await safeJson(res);
   return data || null;
 }
 
