@@ -1417,8 +1417,9 @@ function renderSidebar() {
 // DETAIL
 // ================================================================
 function selectLoan(id) {
+  if (isMobile()) { selectLoanMobile(id); return; }
   currentId = id;
-  document.body.classList.remove('sb-open'); // close mobile sidebar
+  document.body.classList.remove('sb-open');
   showPage('loans');
   document.getElementById('add-loan-panel').style.display = 'none';
   renderSidebar();
