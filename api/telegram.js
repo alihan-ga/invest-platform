@@ -1,12 +1,8 @@
 // Vercel Serverless Function — Telegram Bot Webhook
-// Деплоится автоматически вместе с сайтом на Vercel
-// URL будет: https://ваш-сайт.vercel.app/api/telegram
+// URL: https://invest-platform-seven.vercel.app/api/telegram
 
-const SUPABASE_URL = 'https://afnxgnoqkxtyrcwhgbyv.supabase.co';
-const BOT_TOKEN    = '8447689900:AAEKt1iaGkldie1gDHLa4EewxZX6jlmHERM';
-
-// SERVICE_ROLE_KEY — добавь в Vercel Environment Variables как SUPABASE_SERVICE_KEY
-// Supabase → Settings → API → service_role
+const SUPABASE_URL        = 'https://afnxgnoqkxtyrcwhgbyv.supabase.co';
+const BOT_TOKEN           = '8447689900:AAEKt1iaGkldie1gDHLa4EewxZX6jlmHERM';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 async function sendMessage(chatId, text) {
@@ -17,26 +13,61 @@ async function sendMessage(chatId, text) {
   });
 }
 
-async function supabaseRequest(path, options = {}) {
+async function sbGet(path) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...options,
     headers: {
       'apikey': SUPABASE_SERVICE_KEY,
-      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'resolution=merge-duplicates',
-      ...(options.headers || {})
+      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
     }
   });
   return res.json();
 }
 
-function localDateStr(date) {
-  return date.toISOString().split('T')[0];
+async function sbPost(path, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_SERVICE_KEY,
+      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates'
+    },
+    body: JSON.stringify(body)
+  });
+  return res.json();
+}
+
+async function sbDelete(path) {
+  await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: 'DELETE',
+    headers: {
+      'apikey': SUPABASE_SERVICE_KEY,
+      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+    }
+  });
+}
+
+async function findUserByCode(code) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/find_user_by_code`, {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_SERVICE_KEY,
+      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ p_code: code })
+  });
+  const data = await res.json();
+  return data || null;
 }
 
 function fmt(n) {
   return Math.round(n).toLocaleString('ru-RU') + ' ₸';
+}
+
+function localDateStr(date) {
+  const kz = new Date(date.getTime() + 5 * 3600000);
+  return kz.toISOString().split('T')[0];
 }
 
 export default async function handler(req, res) {
@@ -44,144 +75,106 @@ export default async function handler(req, res) {
     return res.status(200).send('Telegram webhook OK');
   }
 
-  const update = req.body;
+  const update  = req.body;
   const message = update.message;
-  if (!message || !message.text) {
-    return res.status(200).send('ok');
-  }
+  if (!message || !message.text) return res.status(200).send('ok');
 
   const chatId   = message.chat.id;
   const text     = message.text.trim();
-  const username = message.from?.username || message.from?.first_name || 'друг';
+  const username = message.from?.first_name || message.from?.username || 'друг';
 
-  // /start CODE — привязка аккаунта
+  // ── /start [CODE] ─────────────────────────────────────────────
   if (text.startsWith('/start')) {
-    const parts = text.split(' ');
-    const code  = parts[1]?.toUpperCase();
+    const code = text.split(' ')[1]?.toUpperCase();
 
     if (!code) {
       await sendMessage(chatId,
-        `👋 Привет, ${username}!\n\nЯ — <b>Инвест-трекер бот</b>.\n\nЧтобы подключить уведомления, открой приложение → профиль → <b>Подключить Telegram</b>.`
+        `👋 Привет, ${username}!\n\nЯ — <b>Инвест-трекер бот</b>.\n\nЧтобы подключить уведомления:\n1. Открой приложение\n2. Нажми на аватар профиля\n3. Выбери <b>«Подключить Telegram»</b>\n4. Отправь мне команду с кодом`
       );
       return res.status(200).send('ok');
     }
 
-    // Ищем пользователя по коду (первые 8 символов user_id без дефисов)
-    const users = await supabaseRequest(
-      `users_telegram_link?code=eq.${code}&select=user_id`
-    );
-
-    // Альтернативный поиск: ищем в auth.users через RPC
-    // Используем простой подход: code = первые 8 символов uuid без дефисов
-    // Ищем в таблице loans пользователей чей id начинается с этого кода
-    const loans = await supabaseRequest(
-      `loans?select=user_id&limit=1`,
-      {
-        headers: {
-          'Range': '0-0'
-        }
-      }
-    );
-
-    // Поиск user_id по коду через Supabase RPC
-    const rpcResult = await fetch(`${SUPABASE_URL}/rest/v1/rpc/find_user_by_code`, {
-      method: 'POST',
-      headers: {
-        'apikey': SUPABASE_SERVICE_KEY,
-        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ p_code: code })
-    });
-    const userId = await rpcResult.json();
-
+    const userId = await findUserByCode(code);
     if (!userId) {
       await sendMessage(chatId,
-        `❌ Код не найден. Попробуй снова: открой приложение → профиль → <b>Подключить Telegram</b>.`
+        `❌ Код <b>${code}</b> не найден.\n\nПопробуй снова: открой приложение → профиль → <b>Подключить Telegram</b> и скопируй свежий код.`
       );
       return res.status(200).send('ok');
     }
 
-    // Сохраняем chat_id
-    await supabaseRequest('user_telegram', {
-      method: 'POST',
-      body: JSON.stringify({ user_id: userId, chat_id: String(chatId) })
-    });
+    await sbPost('user_telegram', { user_id: userId, chat_id: String(chatId) });
 
     await sendMessage(chatId,
-      `✅ <b>Готово!</b> Telegram подключён к Инвест-трекеру.\n\nТеперь каждый день в <b>9:00</b> ты будешь получать уведомления о предстоящих платежах.\n\nКоманды:\n/today — платежи сегодня\n/week — платежи на неделю\n/loans — мои займы`
+      `✅ <b>Готово, ${username}!</b> Telegram подключён.\n\nКаждый день в <b>9:00</b> буду присылать платежи на сегодня и завтра.\n\nКоманды:\n/today — платежи сегодня\n/week — платежи на 7 дней\n/loans — активные займы\n/stop — отключить уведомления`
     );
     return res.status(200).send('ok');
   }
 
-  // Находим пользователя по chat_id
-  const tgRows = await supabaseRequest(`user_telegram?chat_id=eq.${chatId}&select=user_id`);
+  // ── Для всех остальных команд — ищем пользователя по chat_id ──
+  const tgRows = await sbGet(`user_telegram?chat_id=eq.${chatId}&select=user_id`);
   const userId = tgRows?.[0]?.user_id;
 
-  if (!userId && text !== '/start') {
+  if (!userId) {
     await sendMessage(chatId,
-      `👋 Привет! Сначала подключи аккаунт: открой приложение → профиль → <b>Подключить Telegram</b>.`
+      `👋 Сначала подключи аккаунт:\nОткрой приложение → профиль → <b>Подключить Telegram</b>.`
     );
     return res.status(200).send('ok');
   }
 
-  // Загружаем займы пользователя
-  const loanRows = await supabaseRequest(`loans?user_id=eq.${userId}&select=data`);
+  const loanRows = await sbGet(`loans?user_id=eq.${userId}&select=data`);
   const loans    = (loanRows || []).map(r => r.data).filter(Boolean);
-
   const today    = localDateStr(new Date());
-  const todayD   = new Date();
-  const weekLater = localDateStr(new Date(todayD.getTime() + 7 * 86400000));
+  const weekEnd  = localDateStr(new Date(Date.now() + 7 * 86400000));
 
+  // ── /today ────────────────────────────────────────────────────
   if (text === '/today') {
-    const payments = [];
+    const pays = [];
     for (const l of loans) {
       for (const p of (l.schedule || [])) {
-        if (!p.paid && p.date === today && p.total > 0 && !p.is_early && !p.is_default) {
-          payments.push({ name: l.name, platform: l.platform, total: p.total, body: p.body, reward: p.net_reward });
-        }
+        if (!p.paid && p.date === today && p.total > 0 && !p.is_early && !p.is_default)
+          pays.push({ name: l.name, platform: l.platform, total: p.total, body: p.body, reward: p.net_reward });
       }
     }
-    if (!payments.length) {
-      await sendMessage(chatId, `📅 <b>Сегодня платежей нет.</b>\n\nОтдыхай! 🎉`);
+    if (!pays.length) {
+      await sendMessage(chatId, `📅 <b>Сегодня платежей нет.</b> Отдыхай! 🎉`);
     } else {
-      const total = payments.reduce((s, p) => s + p.total, 0);
+      const sum = pays.reduce((s, p) => s + p.total, 0);
       let msg = `📅 <b>Платежи сегодня (${today}):</b>\n\n`;
-      for (const p of payments) {
-        msg += `• <b>${p.name}</b> [${p.platform}]\n  💰 ${fmt(p.total)} (тело: ${fmt(p.body)}, %: ${fmt(p.reward)})\n\n`;
-      }
-      msg += `<b>Итого: ${fmt(total)}</b>`;
+      for (const p of pays)
+        msg += `• <b>${p.name}</b> [${p.platform}]\n  💰 ${fmt(p.total)}\n\n`;
+      msg += `<b>Итого: ${fmt(sum)}</b>`;
       await sendMessage(chatId, msg);
     }
     return res.status(200).send('ok');
   }
 
+  // ── /week ─────────────────────────────────────────────────────
   if (text === '/week') {
-    const payments = [];
+    const pays = [];
     for (const l of loans) {
       for (const p of (l.schedule || [])) {
-        if (!p.paid && p.date >= today && p.date <= weekLater && p.total > 0 && !p.is_early && !p.is_default) {
-          payments.push({ name: l.name, platform: l.platform, date: p.date, total: p.total });
-        }
+        if (!p.paid && p.date >= today && p.date <= weekEnd && p.total > 0 && !p.is_early && !p.is_default)
+          pays.push({ name: l.name, platform: l.platform, date: p.date, total: p.total });
       }
     }
-    payments.sort((a, b) => a.date.localeCompare(b.date));
-    if (!payments.length) {
+    pays.sort((a, b) => a.date.localeCompare(b.date));
+    if (!pays.length) {
       await sendMessage(chatId, `📆 <b>На этой неделе платежей нет.</b>`);
     } else {
-      const total = payments.reduce((s, p) => s + p.total, 0);
+      const sum = pays.reduce((s, p) => s + p.total, 0);
       let msg = `📆 <b>Платежи на 7 дней:</b>\n\n`;
-      for (const p of payments) {
+      for (const p of pays)
         msg += `• ${p.date} — <b>${p.name}</b> [${p.platform}]: ${fmt(p.total)}\n`;
-      }
-      msg += `\n<b>Итого: ${fmt(total)}</b>`;
+      msg += `\n<b>Итого: ${fmt(sum)}</b>`;
       await sendMessage(chatId, msg);
     }
     return res.status(200).send('ok');
   }
 
+  // ── /loans ────────────────────────────────────────────────────
   if (text === '/loans') {
-    const active = loans.filter(l => !l.default_info && l.schedule?.some(p => !p.paid && p.total > 0));
+    const active = loans.filter(l => !l.default_info &&
+      l.schedule?.some(p => !p.paid && p.total > 0 && !p.is_early && !p.is_default));
     if (!active.length) {
       await sendMessage(chatId, `📋 <b>Активных займов нет.</b>`);
     } else {
@@ -198,15 +191,16 @@ export default async function handler(req, res) {
     return res.status(200).send('ok');
   }
 
+  // ── /stop ─────────────────────────────────────────────────────
   if (text === '/stop') {
-    await supabaseRequest(`user_telegram?user_id=eq.${userId}`, { method: 'DELETE' });
+    await sbDelete(`user_telegram?user_id=eq.${userId}`);
     await sendMessage(chatId, `👋 Уведомления отключены. Чтобы снова подключиться — открой приложение.`);
     return res.status(200).send('ok');
   }
 
-  // Неизвестная команда
+  // ── Неизвестная команда ───────────────────────────────────────
   await sendMessage(chatId,
-    `Команды:\n/today — платежи сегодня\n/week — платежи на 7 дней\n/loans — мои займы\n/stop — отключить уведомления`
+    `Команды:\n/today — платежи сегодня\n/week — платежи на 7 дней\n/loans — активные займы\n/stop — отключить уведомления`
   );
   return res.status(200).send('ok');
 }
