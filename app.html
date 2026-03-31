@@ -462,9 +462,25 @@ tr.row-default td .bal-loss{color:var(--danger);font-weight:700}
   <button class="profile-dropdown-item" onclick="toggleTheme();closeProfileDropdown()">
     <span id="profile-theme-icon">🌙</span> Сменить тему
   </button>
+  <button class="profile-dropdown-item" id="tg-connect-btn" onclick="openTelegramModal();closeProfileDropdown()">
+    ✈️ <span id="tg-connect-label">Подключить Telegram</span>
+  </button>
   <button class="profile-dropdown-item danger" onclick="signOut();closeProfileDropdown()">
     🚪 Выйти
   </button>
+</div>
+
+<!-- TELEGRAM CONNECT MODAL -->
+<div class="modal-overlay hidden" id="modal-telegram">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title">
+      ✈️ Telegram-уведомления
+      <span class="modal-close" onclick="closeModal('modal-telegram')">✕</span>
+    </div>
+    <div id="tg-modal-body">
+      <!-- filled by JS -->
+    </div>
+  </div>
 </div>
 
 <!-- Mobile header (shown on small screens) -->
@@ -5427,7 +5443,88 @@ async function signOut() {
   _sb.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT') window.location.replace('./index.html');
   });
+
+  // Загружаем Telegram-статус
+  await loadTelegramStatus();
 })();
+
+// ── Telegram подключение ──────────────────────────────────────────
+const TG_BOT_USERNAME = 'invest_tracker_kz_bot'; // замените на username вашего бота
+
+let _tgChatId = null;
+
+async function loadTelegramStatus() {
+  if (!_currentUser) return;
+  const { data } = await _sb
+    .from('user_telegram')
+    .select('chat_id')
+    .eq('user_id', _currentUser.id)
+    .maybeSingle();
+  _tgChatId = data?.chat_id || null;
+  const label = document.getElementById('tg-connect-label');
+  if (label) label.textContent = _tgChatId ? 'Telegram подключён ✓' : 'Подключить Telegram';
+}
+
+function openTelegramModal() {
+  const body = document.getElementById('tg-modal-body');
+  if (_tgChatId) {
+    body.innerHTML = `
+      <div style="text-align:center;padding:8px 0 20px">
+        <div style="font-size:40px;margin-bottom:12px">✅</div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:6px">Telegram подключён</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:20px">Вы будете получать уведомления о платежах каждое утро в 9:00</div>
+        <button class="btn btn-ghost" onclick="disconnectTelegram()">Отключить Telegram</button>
+      </div>`;
+  } else {
+    // Генерируем одноразовый код привязки (user_id без дефисов, первые 8 символов)
+    const code = _currentUser.id.replace(/-/g, '').substring(0, 8).toUpperCase();
+    body.innerHTML = `
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">
+        Чтобы получать уведомления о платежах в Telegram, выполни два простых шага:
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:14px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Шаг 1 — Открой бота</div>
+        <a href="https://t.me/${TG_BOT_USERNAME}" target="_blank"
+           style="display:inline-block;background:var(--accent);color:#fff;border-radius:8px;padding:8px 16px;font-size:13px;font-weight:600;text-decoration:none">
+          ✈️ Открыть @${TG_BOT_USERNAME}
+        </a>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:14px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:6px">Шаг 2 — Отправь боту эту команду</div>
+        <div style="font-family:monospace;font-size:16px;font-weight:700;letter-spacing:2px;color:var(--accent);cursor:pointer"
+             onclick="navigator.clipboard.writeText('/start ${code}');toast('Скопировано!')"
+             title="Нажми чтобы скопировать">
+          /start ${code}
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">нажми чтобы скопировать</div>
+      </div>
+      <div style="font-size:12px;color:var(--text3)">После отправки команды бот подтвердит подключение, и эта страница обновится автоматически.</div>
+      <div class="modal-actions" style="margin-top:16px">
+        <button class="btn btn-ghost" onclick="closeModal('modal-telegram')">Закрыть</button>
+        <button class="btn btn-primary" onclick="checkTelegramConnected()">Проверить подключение</button>
+      </div>`;
+  }
+  openModal('modal-telegram');
+}
+
+async function checkTelegramConnected() {
+  await loadTelegramStatus();
+  if (_tgChatId) {
+    toast('✅ Telegram успешно подключён!');
+    openTelegramModal(); // перерисуем модал с новым статусом
+  } else {
+    toast('Ещё не подключён — отправь команду боту');
+  }
+}
+
+async function disconnectTelegram() {
+  await _sb.from('user_telegram').delete().eq('user_id', _currentUser.id);
+  _tgChatId = null;
+  const label = document.getElementById('tg-connect-label');
+  if (label) label.textContent = 'Подключить Telegram';
+  closeModal('modal-telegram');
+  toast('Telegram отключён');
+}
 </script>
 </body>
 </html>
