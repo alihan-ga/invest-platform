@@ -347,6 +347,11 @@ body.sb-open .sidebar{transform:translateX(0)!important}
   /* Fix 3: Mobile loans sidebar — compact list */
   .mob-loan-list{display:block}
   .desk-loan-list{display:none}
+
+  /* Mobile detail view: when #page-loans has class .mob-show-detail */
+  #page-loans.mob-show-detail .mob-loan-list{display:none!important}
+  #page-loans.mob-show-detail .desk-loan-list{display:block!important}
+  #page-loans.mob-show-detail #loan-detail-wrap{display:block!important}
 }
 
 /* legend pending dots — adapt to theme */
@@ -810,6 +815,10 @@ tr.row-default td .bal-loss{color:var(--danger);font-weight:700}
       </div>
       <!-- Loan detail -->
       <div class="detail desk-loan-list" id="loan-detail-wrap">
+        <!-- Mobile back button — only visible when in detail view on mobile -->
+        <div id="mob-back-btn" style="display:none;padding:10px 14px 0">
+          <button class="btn btn-ghost btn-sm" onclick="closeMobileDetail()" style="font-size:13px">← Назад к списку</button>
+        </div>
         <div class="detail-empty" id="empty-state">
           <div class="detail-empty-icon">👆</div>
           <div style="font-size:15px;font-weight:600;margin-bottom:6px">Выбери займ из списка</div>
@@ -1267,19 +1276,26 @@ function renderMobLoanList() {
 
 function selectLoanMobile(id) {
   currentId = id;
-  // Активируем страницу Займы без вызова showPage (который сбрасывает видимость)
   currentPage = 'loans';
   ['overview','calendar','loans'].forEach(p => {
     const el = document.getElementById('page-' + p);
     if (el) el.style.display = p === 'loans' ? 'block' : 'none';
   });
   setMobNav('loans');
-  // Скрываем список, показываем деталь
-  const mobList = document.querySelector('.mob-loan-list');
-  const deskWrap = document.getElementById('loan-detail-wrap');
-  if (mobList) mobList.style.display = 'none';
-  if (deskWrap) { deskWrap.style.display = 'block'; deskWrap.classList.remove('desk-loan-list'); }
+  // Use CSS class on #page-loans to switch list↔detail
+  const pageLoans = document.getElementById('page-loans');
+  if (pageLoans) pageLoans.classList.add('mob-show-detail');
+  const backBtn = document.getElementById('mob-back-btn');
+  if (backBtn) backBtn.style.display = 'block';
   renderDetail();
+}
+
+function closeMobileDetail() {
+  const pageLoans = document.getElementById('page-loans');
+  if (pageLoans) pageLoans.classList.remove('mob-show-detail');
+  const backBtn = document.getElementById('mob-back-btn');
+  if (backBtn) backBtn.style.display = 'none';
+  renderMobLoanList();
 }
 function showPage(page, btn) {
   currentPage = page;
@@ -1296,10 +1312,16 @@ function showPage(page, btn) {
   if (page === 'loans') {
     const mobList  = document.querySelector('.mob-loan-list');
     const deskWrap = document.getElementById('loan-detail-wrap');
+    const pageLoans = document.getElementById('page-loans');
     if (isMobile()) {
-      if (mobList)  { mobList.style.display = 'block'; renderMobLoanList(); }
-      if (deskWrap) deskWrap.style.display = 'none';
+      // Always go back to loan list when tapping nav
+      if (pageLoans) pageLoans.classList.remove('mob-show-detail');
+      const backBtn = document.getElementById('mob-back-btn');
+      if (backBtn) backBtn.style.display = 'none';
+      if (mobList)  { mobList.style.display = ''; renderMobLoanList(); }
+      if (deskWrap) deskWrap.style.display = '';
     } else {
+      if (pageLoans) pageLoans.classList.remove('mob-show-detail');
       if (mobList)  mobList.style.display = 'none';
       if (deskWrap) deskWrap.style.display = 'block';
     }
