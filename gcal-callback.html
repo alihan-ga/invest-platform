@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Google Calendar</title></head>
+<body>
+<script>
+// Эта страница открывается в popup после авторизации Google
+// Извлекаем access_token из URL hash и передаём в родительское окно
+const hash = window.location.hash.substring(1);
+const params = new URLSearchParams(hash);
+const token = params.get('access_token');
+
+if (token && window.opener) {
+  window.opener.postMessage({ type: 'gcal_token', token }, '*');
+} else if (window.opener) {
+  window.opener.postMessage({ type: 'gcal_token', token: null }, '*');
+}
+window.close();
+</script>
+</body>
+</html>

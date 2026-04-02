@@ -465,6 +465,9 @@ tr.row-default td .bal-loss{color:var(--danger);font-weight:700}
   <button class="profile-dropdown-item" id="tg-connect-btn" onclick="openTelegramModal();closeProfileDropdown()">
     ✈️ <span id="tg-connect-label">Подключить Telegram</span>
   </button>
+  <button class="profile-dropdown-item" onclick="syncGoogleCalendar();closeProfileDropdown()">
+    📅 <span id="gcal-sync-label">Синхронизировать с Google Calendar</span>
+  </button>
   <button class="profile-dropdown-item danger" onclick="signOut();closeProfileDropdown()">
     🚪 Выйти
   </button>
@@ -5524,6 +5527,117 @@ async function disconnectTelegram() {
   if (label) label.textContent = 'Подключить Telegram';
   closeModal('modal-telegram');
   toast('Telegram отключён');
+}
+
+// ── Google Calendar синхронизация ─────────────────────────────────
+const GCAL_CLIENT_ID = '6403645209-3t3v5q8atc21idl6narfiliegi8u4fq7.apps.googleusercontent.com';
+const GCAL_SCOPES    = 'https://www.googleapis.com/auth/calendar.events';
+
+let _gcalToken = null;
+
+async function syncGoogleCalendar() {
+  try {
+    // Запрашиваем токен через Google OAuth popup
+    _gcalToken = await getGoogleCalendarToken();
+    if (!_gcalToken) return;
+
+    const label = document.getElementById('gcal-sync-label');
+    if (label) label.textContent = 'Синхронизация...';
+
+    const today = localDateStr(new Date());
+    let created = 0;
+    let errors  = 0;
+
+    for (const l of loans) {
+      for (const p of (l.schedule || [])) {
+        if (!p.paid && p.date >= today && p.total > 0 && !p.is_early && !p.is_default) {
+          const ok = await createCalendarEvent(l, p);
+          if (ok) created++; else errors++;
+        }
+      }
+    }
+
+    if (label) label.textContent = 'Синхронизировать с Google Calendar';
+    toast(`✅ Создано ${created} событий в Google Calendar${errors ? ` (ошибок: ${errors})` : ''}`);
+  } catch(e) {
+    console.error('gcal error:', e);
+    toast('❌ Ошибка синхронизации с Google Calendar');
+  }
+}
+
+function getGoogleCalendarToken() {
+  return new Promise((resolve) => {
+    if (!GCAL_CLIENT_ID) {
+      toast('❌ Google Client ID не настроен');
+      resolve(null);
+      return;
+    }
+
+    // Открываем OAuth окно Google
+    const params = new URLSearchParams({
+      client_id:     GCAL_CLIENT_ID,
+      redirect_uri:  'https://invest-platform-seven.vercel.app/gcal-callback.html',
+      response_type: 'token',
+      scope:         GCAL_SCOPES,
+      prompt:        'consent'
+    });
+
+    const popup = window.open(
+      `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
+      'gcal_auth',
+      'width=500,height=600,scrollbars=yes'
+    );
+
+    // Слушаем сообщение от popup с токеном
+    const handler = (e) => {
+      if (e.data?.type === 'gcal_token') {
+        window.removeEventListener('message', handler);
+        popup?.close();
+        resolve(e.data.token || null);
+      }
+    };
+    window.addEventListener('message', handler);
+
+    // Таймаут 5 минут
+    setTimeout(() => {
+      window.removeEventListener('message', handler);
+      resolve(null);
+    }, 300000);
+  });
+}
+
+async function createCalendarEvent(loan, payment) {
+  try {
+    const title = `💰 ${loan.name} [${loan.platform}] — ${Math.round(payment.total).toLocaleString('ru-RU')} ₸`;
+    const date  = payment.date; // 'YYYY-MM-DD'
+
+    const event = {
+      summary: title,
+      description: `Тело: ${Math.round(payment.body).toLocaleString('ru-RU')} ₸\nПроценты: ${Math.round(payment.net_reward).toLocaleString('ru-RU')} ₸\nИтого: ${Math.round(payment.total).toLocaleString('ru-RU')} ₸`,
+      start: { date },
+      end:   { date },
+      reminders: {
+        useDefault: false,
+        overrides: [
+          { method: 'popup', minutes: 60 },   // за 1 час
+          { method: 'popup', minutes: 1440 }  // за 1 день
+        ]
+      }
+    };
+
+    const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${_gcalToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(event)
+    });
+
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 </script>
 </body>
