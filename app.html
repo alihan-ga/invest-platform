@@ -468,6 +468,9 @@ tr.row-default td .bal-loss{color:var(--danger);font-weight:700}
   <button class="profile-dropdown-item" onclick="syncGoogleCalendar();closeProfileDropdown()">
     📅 <span id="gcal-sync-label">Синхронизировать с Google Calendar</span>
   </button>
+  <button class="profile-dropdown-item" onclick="clearGoogleCalendar();closeProfileDropdown()">
+    🗑 Удалить события из Google Calendar
+  </button>
   <button class="profile-dropdown-item danger" onclick="signOut();closeProfileDropdown()">
     🚪 Выйти
   </button>
@@ -5530,19 +5533,51 @@ async function disconnectTelegram() {
 }
 
 // ── Google Calendar синхронизация ─────────────────────────────────
-const GCAL_CLIENT_ID = '6403645209-3t3v5q8atc21idl6narfiliegi8u4fq7.apps.googleusercontent.com';
-const GCAL_SCOPES    = 'https://www.googleapis.com/auth/calendar.events';
+const GCAL_CLIENT_ID  = '6403645209-3t3v5q8atc21idl6narfiliegi8u4fq7.apps.googleusercontent.com';
+const GCAL_SCOPES     = 'https://www.googleapis.com/auth/calendar';
+const GCAL_CAL_NAME   = 'Инвест-трекер';
+const GCAL_CAL_COLOR  = '#6366f1'; // indigo
 
-let _gcalToken = null;
+let _gcalToken  = null;
+let _gcalCalId  = null; // ID календаря "Инвест-трекер"
+
+// Получаем или создаём календарь "Инвест-трекер"
+async function getOrCreateCalendar() {
+  // Ищем среди существующих
+  const res  = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+    headers: { 'Authorization': `Bearer ${_gcalToken}` }
+  });
+  const data = await res.json();
+  const existing = (data.items || []).find(c => c.summary === GCAL_CAL_NAME);
+  if (existing) return existing.id;
+
+  // Создаём новый
+  const res2 = await fetch('https://www.googleapis.com/calendar/v3/calendars', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${_gcalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ summary: GCAL_CAL_NAME, timeZone: 'Asia/Almaty' })
+  });
+  const cal = await res2.json();
+
+  // Красим в фиолетовый
+  await fetch(`https://www.googleapis.com/calendar/v3/users/me/calendarList/${cal.id}`, {
+    method: 'PATCH',
+    headers: { 'Authorization': `Bearer ${_gcalToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ colorId: '9' }) // grape/фиолетовый
+  });
+
+  return cal.id;
+}
 
 async function syncGoogleCalendar() {
   try {
-    // Запрашиваем токен через Google OAuth popup
     _gcalToken = await getGoogleCalendarToken();
     if (!_gcalToken) return;
 
     const label = document.getElementById('gcal-sync-label');
     if (label) label.textContent = 'Синхронизация...';
+
+    _gcalCalId = await getOrCreateCalendar();
 
     const today = localDateStr(new Date());
     let created = 0;
@@ -5562,6 +5597,43 @@ async function syncGoogleCalendar() {
   } catch(e) {
     console.error('gcal error:', e);
     toast('❌ Ошибка синхронизации с Google Calendar');
+    const label = document.getElementById('gcal-sync-label');
+    if (label) label.textContent = 'Синхронизировать с Google Calendar';
+  }
+}
+
+async function clearGoogleCalendar() {
+  try {
+    _gcalToken = await getGoogleCalendarToken();
+    if (!_gcalToken) return;
+
+    _gcalCalId = await getOrCreateCalendar();
+
+    toast('Удаление событий...');
+
+    // Получаем все события из календаря "Инвест-трекер"
+    let pageToken = null;
+    let deleted   = 0;
+    do {
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(_gcalCalId)}/events?maxResults=250${pageToken ? '&pageToken=' + pageToken : ''}`;
+      const res  = await fetch(url, { headers: { 'Authorization': `Bearer ${_gcalToken}` } });
+      const data = await res.json();
+      const items = data.items || [];
+
+      for (const ev of items) {
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(_gcalCalId)}/events/${ev.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${_gcalToken}` }
+        });
+        deleted++;
+      }
+      pageToken = data.nextPageToken || null;
+    } while (pageToken);
+
+    toast(`🗑 Удалено ${deleted} событий из Google Calendar`);
+  } catch(e) {
+    console.error('gcal clear error:', e);
+    toast('❌ Ошибка при удалении событий');
   }
 }
 
@@ -5573,7 +5645,6 @@ function getGoogleCalendarToken() {
       return;
     }
 
-    // Открываем OAuth окно Google
     const params = new URLSearchParams({
       client_id:     GCAL_CLIENT_ID,
       redirect_uri:  'https://invest-platform-seven.vercel.app/gcal-callback.html',
@@ -5588,7 +5659,6 @@ function getGoogleCalendarToken() {
       'width=500,height=600,scrollbars=yes'
     );
 
-    // Слушаем сообщение от popup с токеном
     const handler = (e) => {
       if (e.data?.type === 'gcal_token') {
         window.removeEventListener('message', handler);
@@ -5598,7 +5668,6 @@ function getGoogleCalendarToken() {
     };
     window.addEventListener('message', handler);
 
-    // Таймаут 5 минут
     setTimeout(() => {
       window.removeEventListener('message', handler);
       resolve(null);
@@ -5609,23 +5678,27 @@ function getGoogleCalendarToken() {
 async function createCalendarEvent(loan, payment) {
   try {
     const title = `💰 ${loan.name} [${loan.platform}] — ${Math.round(payment.total).toLocaleString('ru-RU')} ₸`;
-    const date  = payment.date; // 'YYYY-MM-DD'
+
+    // Событие 22:00–23:00 по Алматы (UTC+5)
+    const startDateTime = `${payment.date}T22:00:00+05:00`;
+    const endDateTime   = `${payment.date}T23:00:00+05:00`;
 
     const event = {
       summary: title,
       description: `Тело: ${Math.round(payment.body).toLocaleString('ru-RU')} ₸\nПроценты: ${Math.round(payment.net_reward).toLocaleString('ru-RU')} ₸\nИтого: ${Math.round(payment.total).toLocaleString('ru-RU')} ₸`,
-      start: { date },
-      end:   { date },
+      start: { dateTime: startDateTime, timeZone: 'Asia/Almaty' },
+      end:   { dateTime: endDateTime,   timeZone: 'Asia/Almaty' },
       reminders: {
         useDefault: false,
         overrides: [
-          { method: 'popup', minutes: 60 },   // за 1 час
-          { method: 'popup', minutes: 1440 }  // за 1 день
+          { method: 'popup', minutes: 720 },  // за 12 часов
+          { method: 'popup', minutes: 360 },  // за 6 часов
+          { method: 'popup', minutes: 60 }    // за 1 час
         ]
       }
     };
 
-    const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(_gcalCalId)}/events`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${_gcalToken}`,
