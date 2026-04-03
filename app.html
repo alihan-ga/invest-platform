@@ -609,13 +609,13 @@ tr.row-default td .bal-loss{color:var(--danger);font-weight:700}
           <div class="ov-row1-stats" style="flex:1;min-width:0">
             <div class="ov-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px">
               <div class="card-sm"><div class="stat-label">Инвестировано</div><div class="stat-val num" id="ov-total">—</div><div class="stat-sub" id="ov-cnt">—</div><div style="font-size:11px;color:var(--accent);margin-top:3px" id="ov-active-inv"></div></div>
-              <div class="card-sm"><div class="stat-label">Возвращено (тело)</div><div class="stat-val num" id="ov-recv-body" style="color:var(--success)">—</div><div class="stat-sub">подтверждённые</div></div>
+              <div class="card-sm"><div class="stat-label">Возвращено (тело)</div><div class="stat-val num" id="ov-recv-body" style="color:var(--accent)">—</div><div class="stat-sub">подтверждённые</div></div>
               <div class="card-sm"><div class="stat-label">В обороте</div><div class="stat-val num" id="ov-active">—</div><div class="stat-sub" id="ov-active-sub">—</div></div>
             </div>
             <div class="ov-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-              <div class="card-sm"><div class="stat-label">Доход % (всего)</div><div class="stat-val num" id="ov-total-income" style="color:var(--success)">—</div><div class="stat-sub">выпл. + ожид.</div></div>
+              <div class="card-sm"><div class="stat-label">Доход % (всего)</div><div class="stat-val num" id="ov-total-income">—</div><div class="stat-sub">выпл. + ожид.</div></div>
               <div class="card-sm"><div class="stat-label">Выплачено %</div><div class="stat-val num" id="ov-income" style="color:var(--success)">—</div><div class="stat-sub">подтверждённые</div></div>
-              <div class="card-sm"><div class="stat-label">Ожидаемые %</div><div class="stat-val num" id="ov-pending-reward" style="color:var(--accent)">—</div><div class="stat-sub">будущие</div></div>
+              <div class="card-sm"><div class="stat-label">Ожидаемые %</div><div class="stat-val num" id="ov-pending-reward">—</div><div class="stat-sub">будущие</div></div>
             </div>
           </div>
           <!-- Donut (desktop only) -->
@@ -2542,8 +2542,8 @@ function drawOvDonut(recvBody, recvReward, pendBody, pendReward) {
   const tc = themeColors();
 
   const segments = [
-    {val: recvBody,   color: '#22c55e', label: 'Тело получено'},
-    {val: recvReward, color: '#6366f1', label: '% получено'},
+    {val: recvBody,   color: '#6366f1', label: 'Тело получено'},
+    {val: recvReward, color: '#22c55e', label: '% получено'},
     {val: pendBody,   color: tc.pendBody,   label: 'Тело ожидается'},
     {val: pendReward, color: tc.pendReward, label: '% ожидается'},
   ];
@@ -3471,8 +3471,8 @@ function drawBalanceChart(l) {
   const pendReward = Math.max(0, totReward - recvReward);
 
   const allSegments = [
-    { val: recvBody,   color: '#22c55e', label: 'Тело получено'  },
-    { val: recvReward, color: '#6366f1', label: '% получено'     },
+    { val: recvBody,   color: '#6366f1', label: 'Тело получено'  },
+    { val: recvReward, color: '#22c55e', label: '% получено'     },
     { val: pendBody,   color: tc.pendBody,   label: 'Тело ожидается' },
     { val: pendReward, color: tc.pendReward, label: '% ожидается'    },
   ];
